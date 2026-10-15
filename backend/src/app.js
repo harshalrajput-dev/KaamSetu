@@ -49,17 +49,22 @@ export function createApp() {
 
   app.set("trust proxy", 1);
 
-  // Security headers. Disable CSP cross-origin resource policy for API usage.
+  // 1) CORS FIRST — before every other middleware and all routes, so an
+  //    OPTIONS preflight is answered here and can never fall through to a
+  //    404 route or an error handler.
+  app.use(cors(corsOptions));
+
+  // 2) Explicit preflight handler as an extra safety net. The cors() call
+  //    above already ends OPTIONS with 204 + headers; this guarantees the
+  //    request is handled even if it somehow reaches this layer.
+  app.options("*", cors(corsOptions), (_req, res) => res.sendStatus(200));
+
+  // 3) Security headers (every non-CORS middleware comes after CORS).
   app.use(
     helmet({
       crossOriginResourcePolicy: { policy: "cross-origin" },
     })
   );
-
-  app.use(cors(corsOptions));
-  // Explicit preflight safety net for every route (redundant with the line
-  // above, but guarantees OPTIONS never reaches a route that would 404).
-  app.options("*", cors(corsOptions));
 
   app.use(express.json({ limit: "1mb" }));
   app.use(express.urlencoded({ extended: true }));
