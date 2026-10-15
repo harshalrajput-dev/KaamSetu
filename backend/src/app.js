@@ -24,44 +24,21 @@ import auditLogRoutes from "./routes/auditLog.routes.js";
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
-// Origins that are always allowed (local dev + the deployed Vercel frontend),
-// even if CORS_ORIGINS is not configured on the host (e.g. Render).
-const DEFAULT_ALLOWED_ORIGINS = [
-  "http://localhost:5173",
-  "http://localhost:4173",
-  "http://127.0.0.1:5173",
-  "http://127.0.0.1:4173",
-  "https://kaam-setu-rust.vercel.app",
-];
-
-// Raw value so we can tell "not configured" apart from an explicit allowlist.
-const RAW_CORS_ORIGINS = (process.env.CORS_ORIGINS || "").trim();
-
-// When CORS_ORIGINS is unset (or "*"), reflect any origin. Note: with
-// `credentials: true` the browser forbids a literal "*" response, so we echo
-// the caller's Origin header instead (handled by the cors callback below).
-const ALLOW_ALL_ORIGINS =
-  RAW_CORS_ORIGINS === "" || RAW_CORS_ORIGINS === "*" || env.corsOrigins.includes("*");
-
-function isOriginAllowed(origin) {
-  if (!origin) return true; // same-origin, curl, Postman, native mobile apps
-  if (ALLOW_ALL_ORIGINS) return true;
-  if (env.corsOrigins.includes(origin)) return true;
-  if (DEFAULT_ALLOWED_ORIGINS.includes(origin)) return true;
-  // Allow Vercel preview/branch deployments (e.g. kaam-setu-git-main-*.vercel.app).
-  if (/^https:\/\/[a-z0-9-]+\.vercel\.app$/i.test(origin)) return true;
-  return false;
-}
-
+// CORS runs before ALL routes so preflight OPTIONS is answered with the right
+// headers instead of falling through to 404/500.
+//
+// Dynamic reflection: we echo back the caller's Origin (Vercel production,
+// Vercel preview/branch domains, localhost, mobile/curl with no Origin).
+// A literal "*" is NOT allowed by browsers when credentials are enabled, so
+// reflecting the actual origin is what keeps `credentials: true` working.
 const corsOptions = {
   origin(origin, callback) {
-    // Never throw here: an unhandled CORS error becomes a 500 WITHOUT CORS
-    // headers, which the browser surfaces as a confusing "Network Error".
-    callback(null, isOriginAllowed(origin));
+    // No Origin header => same-origin, curl, Postman, native mobile apps.
+    return callback(null, true);
   },
   credentials: true,
-  methods: ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
-  allowedHeaders: ["Content-Type", "Authorization"],
+  methods: ["GET", "POST", "PUT", "DELETE", "PATCH", "OPTIONS"],
+  allowedHeaders: ["Content-Type", "Authorization", "X-Requested-With", "Accept"],
   exposedHeaders: ["Content-Length"],
   optionsSuccessStatus: 204,
   maxAge: 86400,
@@ -79,9 +56,10 @@ export function createApp() {
     })
   );
 
-  // CORS must run before everything else so preflight (OPTIONS) requests are
-  // answered with the right headers instead of falling through to 404/500.
   app.use(cors(corsOptions));
+  // Explicit preflight safety net for every route (redundant with the line
+  // above, but guarantees OPTIONS never reaches a route that would 404).
+  app.options("*", cors(corsOptions));
 
   app.use(express.json({ limit: "1mb" }));
   app.use(express.urlencoded({ extended: true }));

@@ -203,6 +203,44 @@ describe("Deployment smoke checks (CORS + root route)", () => {
     expect(res.headers["access-control-allow-credentials"]).toBe("true");
   });
 
+  test("preflight for POST /api/auth/register reflects any Vercel domain", async () => {
+    const previewOrigin = "https://kaamsetu-abc123-user.vercel.app";
+    const res = await request(app)
+      .options("/api/auth/register")
+      .set("Origin", previewOrigin)
+      .set("Access-Control-Request-Method", "POST")
+      .set("Access-Control-Request-Headers", "content-type,x-requested-with,accept");
+
+    expect(res.status).toBe(204);
+    expect(res.headers["access-control-allow-origin"]).toBe(previewOrigin);
+    expect(res.headers["access-control-allow-credentials"]).toBe("true");
+    expect(res.headers["access-control-allow-methods"]).toContain("OPTIONS");
+    expect(res.headers["access-control-allow-headers"]).toMatch(/content-type/i);
+    expect(res.headers["access-control-allow-headers"]).toMatch(/authorization/i);
+    expect(res.headers["access-control-allow-headers"]).toMatch(/x-requested-with/i);
+  });
+
+  test("preflight reflects any origin dynamically (not a literal *)", async () => {
+    const res = await request(app)
+      .options("/api/auth/register")
+      .set("Origin", "http://localhost:3000")
+      .set("Access-Control-Request-Method", "POST");
+
+    expect(res.status).toBe(204);
+    expect(res.headers["access-control-allow-origin"]).toBe("http://localhost:3000");
+    expect(res.headers["access-control-allow-origin"]).not.toBe("*");
+    expect(res.headers["access-control-allow-credentials"]).toBe("true");
+  });
+
+  test("actual POST reaches the route instead of dying at preflight", async () => {
+    const res = await request(app)
+      .post("/api/auth/register")
+      .set("Origin", VERCEL_ORIGIN)
+      .send({ name: "Preflight User", email: "preflight@kt.com", phone: "9000000001", password: "secret12" });
+    expect([201, 400, 409]).toContain(res.status);
+    expect(res.headers["access-control-allow-origin"]).toBe(VERCEL_ORIGIN);
+  });
+
   test("requests without an Origin header still succeed", async () => {
     const res = await request(app).get("/api/health");
     expect(res.status).toBe(200);
