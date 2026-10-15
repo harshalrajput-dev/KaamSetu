@@ -1,0 +1,45 @@
+# Dependencies
+node_modules/
+*/node_modules/
+
+# Environment
+.env
+.env.local
+.env.*.local
+backend/.env
+frontend/.env
+
+# Build output
+dist/
+build/
+*/dist/
+*/build/
+
+# Logs
+logs/
+*.log
+npm-debug.log*
+
+# Editor
+.vscode/
+.idea/
+*.swp
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Uploads
+backend/uploads/
+backend/src/uploads/
+
+# Android / Capacitor
+frontend/android/
+frontend/ios/
+*.apk
+*.aab
+*.keystore
+*.jks
+
+# Test coverage
+coverage/

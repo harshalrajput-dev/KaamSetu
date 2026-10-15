@@ -1,0 +1,18 @@
+{
+  "name": "kaamsetu",
+  "version": "1.0.0",
+  "private": true,
+  "description": "KaamSetu - Online Worker & Home Repair Booking Platform (monorepo root)",
+  "scripts": {
+    "install:all": "npm --prefix backend install && npm --prefix frontend install",
+    "dev:backend": "npm --prefix backend run dev",
+    "dev:frontend": "npm --prefix frontend run dev",
+    "build": "npm --prefix frontend run build",
+    "test": "npm --prefix backend test",
+    "smoke": "npm --prefix backend run smoke",
+    "lint": "npm --prefix frontend run lint",
+    "seed": "npm --prefix backend run seed",
+    "bootstrap": "npm --prefix backend run bootstrap:superadmin",
+    "seed:dev-admins": "npm --prefix backend run seed:dev-admins"
+  }
+}
