@@ -24,6 +24,49 @@ import auditLogRoutes from "./routes/auditLog.routes.js";
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
+// Origins that are always allowed (local dev + the deployed Vercel frontend),
+// even if CORS_ORIGINS is not configured on the host (e.g. Render).
+const DEFAULT_ALLOWED_ORIGINS = [
+  "http://localhost:5173",
+  "http://localhost:4173",
+  "http://127.0.0.1:5173",
+  "http://127.0.0.1:4173",
+  "https://kaam-setu-rust.vercel.app",
+];
+
+// Raw value so we can tell "not configured" apart from an explicit allowlist.
+const RAW_CORS_ORIGINS = (process.env.CORS_ORIGINS || "").trim();
+
+// When CORS_ORIGINS is unset (or "*"), reflect any origin. Note: with
+// `credentials: true` the browser forbids a literal "*" response, so we echo
+// the caller's Origin header instead (handled by the cors callback below).
+const ALLOW_ALL_ORIGINS =
+  RAW_CORS_ORIGINS === "" || RAW_CORS_ORIGINS === "*" || env.corsOrigins.includes("*");
+
+function isOriginAllowed(origin) {
+  if (!origin) return true; // same-origin, curl, Postman, native mobile apps
+  if (ALLOW_ALL_ORIGINS) return true;
+  if (env.corsOrigins.includes(origin)) return true;
+  if (DEFAULT_ALLOWED_ORIGINS.includes(origin)) return true;
+  // Allow Vercel preview/branch deployments (e.g. kaam-setu-git-main-*.vercel.app).
+  if (/^https:\/\/[a-z0-9-]+\.vercel\.app$/i.test(origin)) return true;
+  return false;
+}
+
+const corsOptions = {
+  origin(origin, callback) {
+    // Never throw here: an unhandled CORS error becomes a 500 WITHOUT CORS
+    // headers, which the browser surfaces as a confusing "Network Error".
+    callback(null, isOriginAllowed(origin));
+  },
+  credentials: true,
+  methods: ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
+  allowedHeaders: ["Content-Type", "Authorization"],
+  exposedHeaders: ["Content-Length"],
+  optionsSuccessStatus: 204,
+  maxAge: 86400,
+};
+
 export function createApp() {
   const app = express();
 
@@ -36,19 +79,9 @@ export function createApp() {
     })
   );
 
-  // Strict CORS: only allow configured origins.
-  app.use(
-    cors({
-      origin(origin, callback) {
-        if (!origin) return callback(null, true); // curl / same-origin / mobile apps
-        if (env.corsOrigins.includes("*") || env.corsOrigins.includes(origin)) {
-          return callback(null, true);
-        }
-        return callback(new Error("Not allowed by CORS"));
-      },
-      credentials: true,
-    })
-  );
+  // CORS must run before everything else so preflight (OPTIONS) requests are
+  // answered with the right headers instead of falling through to 404/500.
+  app.use(cors(corsOptions));
 
   app.use(express.json({ limit: "1mb" }));
   app.use(express.urlencoded({ extended: true }));
@@ -58,6 +91,18 @@ export function createApp() {
 
   // Static uploads (optional problem photos)
   app.use("/uploads", express.static(path.join(__dirname, "uploads")));
+
+  // Root route — so hitting the base URL returns JSON instead of a 404.
+  app.get("/", (_req, res) =>
+    res.json({
+      success: true,
+      message: "KaamSetu API is running...",
+      version: "1.0.0",
+      environment: env.nodeEnv,
+      health: "/api/health",
+      time: new Date().toISOString(),
+    })
+  );
 
   // Health check
   app.get("/api/health", (_req, res) =>

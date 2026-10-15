@@ -166,3 +166,45 @@ describe("Naka Admin scoping", () => {
     expect(res.status).toBe(403);
   });
 });
+
+describe("Deployment smoke checks (CORS + root route)", () => {
+  const VERCEL_ORIGIN = "https://kaam-setu-rust.vercel.app";
+
+  test("root route returns a running JSON message instead of 404", async () => {
+    const res = await request(app).get("/");
+    expect(res.status).toBe(200);
+    expect(res.body.success).toBe(true);
+    expect(res.body.message).toMatch(/KaamSetu API is running/i);
+  });
+
+  test("health route responds under /api", async () => {
+    const res = await request(app).get("/api/health");
+    expect(res.status).toBe(200);
+    expect(res.body.data.status).toBe("ok");
+  });
+
+  test("preflight from the Vercel origin allows credentials", async () => {
+    const res = await request(app)
+      .options("/api/auth/login")
+      .set("Origin", VERCEL_ORIGIN)
+      .set("Access-Control-Request-Method", "POST")
+      .set("Access-Control-Request-Headers", "content-type,authorization");
+
+    expect(res.status).toBe(204);
+    expect(res.headers["access-control-allow-origin"]).toBe(VERCEL_ORIGIN);
+    expect(res.headers["access-control-allow-credentials"]).toBe("true");
+    expect(res.headers["access-control-allow-credentials"]).not.toBe("*");
+  });
+
+  test("actual GET response carries CORS headers for the Vercel origin", async () => {
+    const res = await request(app).get("/").set("Origin", VERCEL_ORIGIN);
+    expect(res.status).toBe(200);
+    expect(res.headers["access-control-allow-origin"]).toBe(VERCEL_ORIGIN);
+    expect(res.headers["access-control-allow-credentials"]).toBe("true");
+  });
+
+  test("requests without an Origin header still succeed", async () => {
+    const res = await request(app).get("/api/health");
+    expect(res.status).toBe(200);
+  });
+});
