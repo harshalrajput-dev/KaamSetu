@@ -16,7 +16,6 @@ const storage = multer.diskStorage({
       }
       cb(null, uploadDir);
     } catch (err) {
-      // Fallback to system temp directory if read-only
       cb(null, "/tmp");
     }
   },
