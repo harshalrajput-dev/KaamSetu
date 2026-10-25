@@ -1,30 +1,17 @@
-import multer from "multer";
-import path from "node:path";
-import fs from "node:fs";
-import { fileURLToPath } from "node:url";
+import express from "express";
+import upload from "../middleware/upload.js"; // Import multer middleware
 
-const __filename = fileURLToPath(import.meta.url);
-const __dirname = path.dirname(__filename);
+const router = express.Router();
 
-// Safe storage configuration for Vercel serverless environment
-const storage = multer.diskStorage({
-  destination: function (req, file, cb) {
-    const uploadDir = path.join(__dirname, "../uploads");
-    try {
-      if (!fs.existsSync(uploadDir)) {
-        fs.mkdirSync(uploadDir, { recursive: true });
-      }
-      cb(null, uploadDir);
-    } catch (err) {
-      cb(null, "/tmp");
+router.post("/", upload.single("file"), (req, res) => {
+  try {
+    if (!req.file) {
+      return res.status(400).json({ success: false, message: "No file uploaded" });
     }
-  },
-  filename: function (req, file, cb) {
-    const uniqueSuffix = Date.now() + "-" + Math.round(Math.random() * 1e9);
-    cb(null, file.fieldname + "-" + uniqueSuffix + path.extname(file.originalname));
-  },
+    return res.json({ success: true, fileUrl: `/uploads/${req.file.filename}` });
+  } catch (err) {
+    return res.status(500).json({ success: false, message: err.message });
+  }
 });
 
-const upload = multer({ storage: storage });
-
-export default upload;
+export default router;
