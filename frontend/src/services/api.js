@@ -1,6 +1,7 @@
 import axios from "axios";
 
-const baseURL = import.meta.env.VITE_API_URL || "";
+// Fallback URL add karyo chhe jethi VITE_API_URL miss thay to pan seedhu backend par request jay
+const baseURL = import.meta.env.VITE_API_URL || "https://kaamsetu-backend.vercel.app";
 
 const api = axios.create({
   baseURL,
