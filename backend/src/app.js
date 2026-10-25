@@ -24,23 +24,17 @@ import auditLogRoutes from "./routes/auditLog.routes.js";
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
-// CORS runs before ALL routes so preflight OPTIONS is answered with the right
-// headers instead of falling through to 404/500.
-//
-// Dynamic reflection: we echo back the caller's Origin (Vercel production,
-// Vercel preview/branch domains, localhost, mobile/curl with no Origin).
-// A literal "*" is NOT allowed by browsers when credentials are enabled, so
-// reflecting the actual origin is what keeps `credentials: true` working.
+// Robust dynamic CORS setup for Vercel deployment
 const corsOptions = {
-  origin(origin, callback) {
-    // No Origin header => same-origin, curl, Postman, native mobile apps.
-    return callback(null, true);
+  origin: function (origin, callback) {
+    // Allow all origins dynamically (reflecting caller origin for credentials support)
+    return callback(null, origin || true);
   },
   credentials: true,
   methods: ["GET", "POST", "PUT", "DELETE", "PATCH", "OPTIONS"],
   allowedHeaders: ["Content-Type", "Authorization", "X-Requested-With", "Accept"],
   exposedHeaders: ["Content-Length"],
-  optionsSuccessStatus: 204,
+  optionsSuccessStatus: 200,
   maxAge: 86400,
 };
 
@@ -49,17 +43,11 @@ export function createApp() {
 
   app.set("trust proxy", 1);
 
-  // 1) CORS FIRST — before every other middleware and all routes, so an
-  //    OPTIONS preflight is answered here and can never fall through to a
-  //    404 route or an error handler.
+  // 1) Handle CORS Preflight globally
   app.use(cors(corsOptions));
+  app.options("*", cors(corsOptions));
 
-  // 2) Explicit preflight handler as an extra safety net. The cors() call
-  //    above already ends OPTIONS with 204 + headers; this guarantees the
-  //    request is handled even if it somehow reaches this layer.
-  app.options("*", cors(corsOptions), (_req, res) => res.sendStatus(200));
-
-  // 3) Security headers (every non-CORS middleware comes after CORS).
+  // 2) Security headers
   app.use(
     helmet({
       crossOriginResourcePolicy: { policy: "cross-origin" },
@@ -72,10 +60,14 @@ export function createApp() {
 
   app.use(generalLimiter);
 
-  // Static uploads (optional problem photos)
-  app.use("/uploads", express.static(path.join(__dirname, "uploads")));
+  // Safe Static uploads directory check for Vercel's read-only disk
+  try {
+    app.use("/uploads", express.static(path.join(__dirname, "uploads")));
+  } catch (err) {
+    console.log("Uploads static serve skipped on Vercel read-only system");
+  }
 
-  // Root route — so hitting the base URL returns JSON instead of a 404.
+  // Root route — quick operational check
   app.get("/", (_req, res) =>
     res.json({
       success: true,
@@ -92,6 +84,7 @@ export function createApp() {
     res.json({ success: true, data: { status: "ok", env: env.nodeEnv, time: new Date().toISOString() } })
   );
 
+  // API Routes
   app.use("/api/auth", authRoutes);
   app.use("/api/users", userRoutes);
   app.use("/api/nakas", nakaRoutes);
@@ -105,6 +98,7 @@ export function createApp() {
   app.use("/api/complaints", complaintRoutes);
   app.use("/api/audit-logs", auditLogRoutes);
 
+  // Error Handlers
   app.use(notFound);
   app.use(errorHandler);
 
