@@ -3,6 +3,7 @@ import cors from "cors";
 import helmet from "helmet";
 import morgan from "morgan";
 import path from "node:path";
+import fs from "node:fs";
 import { fileURLToPath } from "node:url";
 import env from "./config/env.js";
 import { generalLimiter } from "./middleware/rateLimit.js";
@@ -24,17 +25,16 @@ import auditLogRoutes from "./routes/auditLog.routes.js";
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
-// Robust dynamic CORS setup for Vercel deployment
+// Robust dynamic CORS setup
 const corsOptions = {
   origin: function (origin, callback) {
-    // Allow all origins dynamically (reflecting caller origin for credentials support)
     return callback(null, origin || true);
   },
   credentials: true,
   methods: ["GET", "POST", "PUT", "DELETE", "PATCH", "OPTIONS"],
   allowedHeaders: ["Content-Type", "Authorization", "X-Requested-With", "Accept"],
   exposedHeaders: ["Content-Length"],
-  optionsSuccessStatus: 200,
+  optionsSuccessStatus: 204,
   maxAge: 86400,
 };
 
@@ -43,7 +43,7 @@ export function createApp() {
 
   app.set("trust proxy", 1);
 
-  // 1) Handle CORS Preflight globally
+  // 1) CORS FIRST
   app.use(cors(corsOptions));
   app.options("*", cors(corsOptions));
 
@@ -60,14 +60,17 @@ export function createApp() {
 
   app.use(generalLimiter);
 
-  // Safe Static uploads directory check for Vercel's read-only disk
+  // Safe static uploads serving (Vercel Read-Only Disk Fix)
   try {
-    app.use("/uploads", express.static(path.join(__dirname, "uploads")));
+    const uploadsDir = path.join(__dirname, "uploads");
+    if (fs.existsSync(uploadsDir)) {
+      app.use("/uploads", express.static(uploadsDir));
+    }
   } catch (err) {
-    console.log("Uploads static serve skipped on Vercel read-only system");
+    console.log("Static uploads directory error ignored for serverless environment");
   }
 
-  // Root route — quick operational check
+  // Root route
   app.get("/", (_req, res) =>
     res.json({
       success: true,
@@ -84,7 +87,7 @@ export function createApp() {
     res.json({ success: true, data: { status: "ok", env: env.nodeEnv, time: new Date().toISOString() } })
   );
 
-  // API Routes
+  // Routes
   app.use("/api/auth", authRoutes);
   app.use("/api/users", userRoutes);
   app.use("/api/nakas", nakaRoutes);
@@ -98,7 +101,6 @@ export function createApp() {
   app.use("/api/complaints", complaintRoutes);
   app.use("/api/audit-logs", auditLogRoutes);
 
-  // Error Handlers
   app.use(notFound);
   app.use(errorHandler);
 
